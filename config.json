@@ -10,11 +10,15 @@
         "channels": 1,
         "sample_rate": 48000,
         "chunk_size": 8192,
-        "record_seconds": 4,
+        "sample_rate_pi": 1024,
+        "chunk_size_pi": 164,
+        "record_seconds": 10,
         "device_index": 2
     },
     "gui": {
-        "update_interval": 5000,
+        "screen_height": 680,
+        "screen_width": 1024,
+        "update_interval": 15000,
         "image_resize": [550, 550],
         "blur_strength": 10,
         "border_size_ratio": 0.20,

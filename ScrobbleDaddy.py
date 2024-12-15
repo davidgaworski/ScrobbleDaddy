@@ -1,84 +1,17 @@
 import pygame
 import numpy as np
 import pyaudio
-import os
-import pyaudio
-import wave
 import asyncio
-import tkinter as tk
 from shazamio import Shazam
 import requests
-from PIL import Image, ImageTk, ImageFilter, ImageStat
-import io
 import os
 import json
-from screeninfo import get_monitors
 import threading
 import sounddevice as sd
 import soundfile as sf
 import pylast
 import time
 import datetime
-
-# Initialize Pygame
-pygame.init()
-
-# Define screen dimensions
-WIDTH = 1024
-HEIGHT = 600
-NUM_BARS = 200  # 31 frequency bands
-BAR_WIDTH = (WIDTH - 200) // NUM_BARS  # Adjust width based on image and text space
-
-last_track_title = ""
-last_artist_name = ""
-last_track_play_count = 0
-last_cover_art_url = ""
-
-# Set up the display
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-
-# Load the image
-image_path = "image.jpg"  # Replace with your image file path
-if os.path.exists(image_path):
-    img = pygame.image.load(image_path)
-    img = pygame.transform.scale(img, (200, HEIGHT))  # Resize image
-else:
-    raise FileNotFoundError(f"Image not found: {image_path}")
-
-# Set up font for text
-font = pygame.font.SysFont("Arial", 24)
-line1_text = font.render(last_artist_name, True, (255, 255, 255))
-line2_text = font.render(last_track_title, True, (255, 255, 255))
-
-# PyAudio setup
-RATE = 44100  # Sample rate (Hz)
-CHUNK = 1024  # Number of frames per buffer
-CHANNELS = 1  # Mono audio
-FORMAT = pyaudio.paInt16  # Audio format (16-bit)
-
-p = pyaudio.PyAudio()
-
-# Open the audio stream for input
-stream = p.open(format=FORMAT, channels=CHANNELS,
-                rate=RATE, input=True, frames_per_buffer=CHUNK)
-
-# Set environment variable for ALSA
-os.environ['PA_ALSA_PLUGHW'] = '1'
-
-# Get your API key and secret from your Last.fm developer account
-API_KEY = ""
-API_SECRET = ""
-username = ""
-password = ""
-password_hash = pylast.md5(password)
-
-
-network = pylast.LastFMNetwork(
-    api_key=API_KEY,
-    api_secret=API_SECRET,
-    username=username,
-    password_hash=password_hash,
-)
 
 
 # Load configuration from a JSON file
@@ -88,19 +21,67 @@ def load_config():
     with open(config_path, 'r') as config_file:
         return json.load(config_file)
 
-
 config = load_config()
 
+# Initialize Pygame
+pygame.init()
+
+running = True
+
+# Define screen dimensions
+WIDTH = config['gui']['screen_width']
+HEIGHT = config['gui']['screen_height']
+NUM_BARS = 200  # 31 frequency bands
+BAR_WIDTH = (WIDTH - 200) // NUM_BARS  # Adjust width based on image and text space
+
+last_track_title = ""
+last_artist_name = ""
+last_track_play_count = 0
+last_cover_art_url = ""
+
+# Set up the display
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+
+# Load the image
+image_path = "image.jpg"  # Replace with your image file path
+
+# Set up font for text
+font = pygame.font.SysFont("Arial", 24)
+
+chunk_size = 30
+track_start_index = 0
+artist_start_index = 0
+
+p = pyaudio.PyAudio()
+
+# Open the audio stream for input
+stream = p.open(format=pyaudio.paInt16, channels=1,rate=config['audio']['sample_rate'], input=True, frames_per_buffer=config['audio']['chunk_size'])
+
+# Set environment variable for ALSA
+os.environ['PA_ALSA_PLUGHW'] = '1'
+
+network = pylast.LastFMNetwork(
+    api_key=config['lastfm']['api_key'],
+    api_secret=config['lastfm']['api_secret'],
+    username=config['lastfm']['username'],
+    password_hash=pylast.md5(config['lastfm']['password']),
+)
+
 duration = 10  # seconds
+
+isRecording = False
 
 def record_audio():
     samplerate = 44100  # Hertz
     filename = 'output.wav'
 
-    mydata = sd.rec(int(samplerate * duration), samplerate=samplerate,
+    isRecording = True
+    mydata = sd.rec(int(samplerate * config['audio']['record_seconds']), samplerate=44100,
                     channels=1, blocking=True)
+
     sf.write(filename, mydata, samplerate)
 
+    isRecording = False
     return filename
 
 async def recognize_song(wav_file):
@@ -119,7 +100,7 @@ def song_play_count(result):
     artist_name = result['track']['subtitle']
 
     track = pylast.Track(
-        artist=artist_name, title=track_title, network=network, username=username
+        artist=artist_name, title=track_title, network=network, username=config["lastfm"]["username"]
     )
 
     # Act
@@ -182,7 +163,7 @@ async def update_song_information():
             update_gui(result)
     else:
         # Ensure the GUI updates even if audio recognition fails
-        root.after(duration, lambda: asyncio.run(update_song_information()))
+        root.after(config['gui']['update_interval'], lambda: asyncio.run(update_song_information()))
 
 def run_recognition_loop():
     while True:
@@ -196,7 +177,7 @@ def start_recognition_thread():
 # Function to get frequency bands from audio data
 def get_frequency_bands():
     # Read a chunk of audio data
-    data = np.frombuffer(stream.read(CHUNK, exception_on_overflow=False), dtype=np.int16)
+    data = np.frombuffer(stream.read(config['audio']['chunk_size'], exception_on_overflow=False), dtype=np.int16)
 
     # Perform FFT on the audio data
     fft_data = np.fft.fft(data)
@@ -205,10 +186,10 @@ def get_frequency_bands():
     magnitudes = np.abs(fft_data)
 
     # Calculate frequency bins
-    freqs = np.fft.fftfreq(len(data), 1 / RATE)
+    freqs = np.fft.fftfreq(len(data), 1 / config['audio']['sample_rate'])
 
     # Split the frequency spectrum into 31 bands (e.g., from 20 Hz to 20 kHz)
-    band_edges = np.logspace(np.log10(200), np.log10(RATE // 2), NUM_BARS + 1)
+    band_edges = np.logspace(np.log10(200), np.log10(config['audio']['sample_rate'] // 2), NUM_BARS + 1)
 
     # Create a list to store the sum of magnitudes in each frequency band
     bands = []
@@ -252,74 +233,129 @@ def draw_equalizer(bands, barSurface):
 
         #pygame.draw.rect(screen, color, (bar_x, HEIGHT - bar_height - 10, BAR_WIDTH, bar_height))
 
-
-# Main loop
-running = True
-clock = pygame.time.Clock()
-
-start_recognition_thread()
-
-while running:
-
-    screen.fill((0, 0, 0))  # Fill the background with black
-
-    # Event handling (to allow for graceful exit)
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-    # Get frequency data for 31 bands
-    bands = get_frequency_bands()
-
-    img = pygame.image.load(image_path)
-    img = pygame.transform.scale(img, (400, 400))  # Resize image
-    # Draw the image on the left
-    screen.blit(img, (0, 100))
-
-    lastfm_img = pygame.image.load("lastfm.jpg")
-    lastfm_img = pygame.transform.scale(lastfm_img, (50, 50))  # Resize image
-    # Draw the image on the left
-    screen.blit(lastfm_img, (10, 10))
-
-    # Draw the text lines on the left
-    screen.blit(font.render(username, True, (255, 255, 255)), (65, 20))
+def scrollArtist():
+    global artist_start_index
 
 
-    barGraphSurface1 = pygame.surface.Surface((WIDTH - 400, HEIGHT/2))
-    barGraphSurface1.fill((0, 0, 0))  # Fill the background with black
+    if (len(last_artist_name) - artist_start_index < chunk_size):
+        time.sleep(3)
+        artist_start_index = 0
+        time.sleep(3)
+    else:
+        artist_start_index += 1
+        time.sleep(.2)
 
-    # blit myNewSurface onto the main screen at the position (0, 0)
-    # Draw the equalizer bars
-    draw_equalizer(bands, barGraphSurface1)
-    screen.blit(barGraphSurface1, (400, 0))
+    scrollArtist()
+
+def startArtistThreat():
+    thread = threading.Thread(target=scrollArtist)
+    thread.daemon = True
+    thread.start()
+
+def scrollSong():
+    global track_start_index
+
+    if (len(last_track_title) - track_start_index < chunk_size):
+        time.sleep(3)
+        track_start_index = 0
+        time.sleep(3)
+    else:
+        track_start_index += 1
+        time.sleep(.2)
+
+    scrollSong()
+
+def startSongThreat():
+    thread = threading.Thread(target=scrollSong)
+    thread.daemon = True
+    thread.start()
+
+def startApp():
+    global running, artist_start_index, track_start_index
+    clock = pygame.time.Clock()
+
+    start_recognition_thread()
+    startSongThreat()
+    startArtistThreat()
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+
+        screen.fill((0, 0, 0))  # Fill the background with black
+
+        # Event handling (to allow for graceful exit)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+        # Get frequency data for 31 bands
+        bands = get_frequency_bands()
+
+        try:
+            img = pygame.image.load(image_path)
+            img = pygame.transform.scale(img, (400, 400))  # Resize image
+            # Draw the image on the left
+            screen.blit(img, (0, 100))
+        except pygame.error:
+            pass
+        lastfm_img = pygame.image.load("lastfm.jpg")
+        lastfm_img = pygame.transform.scale(lastfm_img, (50, 50))  # Resize image
+        # Draw the image on the left
+        screen.blit(lastfm_img, (10, 10))
+
+        # Draw the text lines on the left
+        screen.blit(font.render(config["lastfm"]["username"], True, (255, 255, 255)), (65, 20))
 
 
-    barGraphSurface2 = pygame.transform.flip(barGraphSurface1, False, True)
+        barGraphSurface1 = pygame.surface.Surface((WIDTH - 400, HEIGHT/2))
+        barGraphSurface1.fill((0, 0, 0))  # Fill the background with black
 
-    screen.blit(barGraphSurface2, (400, HEIGHT/2))
+        # blit myNewSurface onto the main screen at the position (0, 0)
+        # Draw the equalizer bars
+        draw_equalizer(bands, barGraphSurface1)
+        screen.blit(barGraphSurface1, (400, 0))
 
-    # Draw the text lines on the left
-    #screen.blit(font.render(last_track_title, True, (255, 255, 255)), (10, 500))
 
-    text = font.render(last_track_title, True, (255, 255, 255))
-    text_rect = text.get_rect(center=(200, 20))
-    screen.blit(text, (text_rect.x, 510))
+        barGraphSurface2 = pygame.transform.flip(barGraphSurface1, False, True)
 
-    text = font.render(last_artist_name, True, (255, 255, 255))
-    text_rect = text.get_rect(center=(200, 20))
-    screen.blit(text, (text_rect.x, 540))
+        screen.blit(barGraphSurface2, (400, HEIGHT/2))
 
-    text = font.render(str(last_track_play_count) + ' Plays', True, (255, 255, 255))
-    text_rect = text.get_rect(center=(200, 20))
-    screen.blit(text, (text_rect.x, 70))
+        # Draw the text lines on the left
+        #screen.blit(font.render(last_track_title, True, (255, 255, 255)), (10, 500))
 
-    # Update the display
-    pygame.display.flip()
-    # Limit the frame rate (FPS)
-    clock.tick(60)
 
-# Close the stream and terminate Pygame
-stream.stop_stream()
-stream.close()
-p.terminate()
-pygame.quit()
+        last_artist_name_t = last_artist_name[artist_start_index:artist_start_index + chunk_size]
+
+        text = font.render(last_artist_name_t, True, (255, 255, 255))
+        text_rect = text.get_rect(center=(200, 20))
+        screen.blit(text, (text_rect.x, 540))
+
+        last_track_title_t = last_track_title[track_start_index:track_start_index + chunk_size]
+
+        text = font.render(last_track_title_t, True, (255, 255, 255))
+        text_rect = text.get_rect(center=(200, 20))
+        screen.blit(text, (text_rect.x, 510))
+
+
+        text = font.render(str(last_track_play_count) + ' Plays', True, (255, 255, 255))
+        text_rect = text.get_rect(center=(200, 20))
+        screen.blit(text, (text_rect.x, 70))
+
+        # Update the display
+        pygame.display.flip()
+        # Limit the frame rate (FPS)
+        clock.tick(60)
+
+def stopApp():
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+    pygame.quit()
+
+if __name__ == "__main__":
+    startApp()
