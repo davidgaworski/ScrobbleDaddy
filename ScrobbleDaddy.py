@@ -504,11 +504,9 @@ def startApp():
         draw_equalizer(bands, bar_surface)
         screen.blit(bar_surface, (LEFT_PANEL_W, 0))
 
-        # Reflection (cached, update every 4th frame)
-        if vinyl_frame_counter % 4 == 0:
-            reflection_surface.blit(bar_surface, (0, 0))
-            reflection_surface = pygame.transform.flip(reflection_surface, False, True)
-            reflection_surface.set_alpha(50)
+        # Reflection
+        reflection_surface = pygame.transform.flip(bar_surface, False, True)
+        reflection_surface.set_alpha(50)
         screen.blit(reflection_surface, (LEFT_PANEL_W, HEIGHT // 2))
 
         # --- Spinning Vinyl Record (rotate every 3rd frame) ---
