@@ -94,12 +94,9 @@ else
     print_success "Miniforge installed."
 fi
 
-# Activate conda
+# Activate conda for this script only
 source "$CONDA_SH"
-
-# Make conda available permanently
-"$(dirname "$(dirname "$CONDA_SH")")/bin/conda" init bash 2>/dev/null || true
-print_success "Conda added to your shell."
+print_success "Conda ready."
 
 
 # ----------------------------------------------------------

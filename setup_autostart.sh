@@ -16,14 +16,19 @@ if [ "$1" = "--remove" ]; then
     exit 0
 fi
 
-# Find conda path
-CONDA_SH=""
+# Find conda env python
+PYTHON_BIN=""
 for path in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/mambaforge"; do
-    if [ -f "$path/etc/profile.d/conda.sh" ]; then
-        CONDA_SH="$path/etc/profile.d/conda.sh"
+    if [ -f "$path/envs/ScrobbleDaddyPy/bin/python" ]; then
+        PYTHON_BIN="$path/envs/ScrobbleDaddyPy/bin/python"
         break
     fi
 done
+
+if [ -z "$PYTHON_BIN" ]; then
+    echo "❌  Could not find ScrobbleDaddyPy environment. Run install.sh first."
+    exit 1
+fi
 
 mkdir -p "$HOME/.config/autostart"
 
@@ -32,7 +37,7 @@ cat > "$DESKTOP_FILE" << EOF
 Type=Application
 Name=ScrobbleDaddy
 Comment=Auto-scrobble vinyl to Last.fm
-Exec=/bin/bash -c "sleep 10 && source $CONDA_SH && conda activate ScrobbleDaddyPy && cd $SCRIPT_DIR && python ScrobbleDaddy.py"
+Exec=/bin/bash -c "sleep 10 && cd $SCRIPT_DIR && $PYTHON_BIN ScrobbleDaddy.py"
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
