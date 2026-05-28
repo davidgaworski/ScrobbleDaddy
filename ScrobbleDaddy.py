@@ -105,63 +105,13 @@ for _i in range(NUM_BARS):
         b = int(180 + (140 - 180) * _t2)
     bar_colors.append((r, g, b))
 
-# Set environment variable for ALSA (must be before pyaudio init)
-os.environ['PA_ALSA_PLUGHW'] = '1'
-
 p = pyaudio.PyAudio()
 
-# List all audio devices at startup
-print("\n--- Audio Devices ---")
-for i in range(p.get_device_count()):
-    info = p.get_device_info_by_index(i)
-    if info['maxInputChannels'] > 0:
-        print(f"  🎤 [{i}] {info['name']} (inputs: {info['maxInputChannels']}, rate: {int(info['defaultSampleRate'])})")
-print("---------------------\n")
+# Open the audio stream for input
+stream = p.open(format=pyaudio.paInt16, channels=1, rate=config['audio']['sample_rate'], input=True, frames_per_buffer=config['audio']['chunk_size'])
 
-# Find a working input device
-def open_audio_stream():
-    """Try configured device, then fall back to default."""
-    device_index = config['audio'].get('device_index', None)
-    rate = config['audio']['sample_rate']
-    chunk = config['audio']['chunk_size']
-
-    # Try configured device first
-    if device_index is not None:
-        try:
-            s = p.open(format=pyaudio.paInt16, channels=1, rate=rate,
-                       input=True, frames_per_buffer=chunk,
-                       input_device_index=device_index)
-            print(f"Audio stream opened on device {device_index}")
-            return s
-        except Exception as e:
-            print(f"Device {device_index} failed: {e} — trying default...")
-
-    # Fall back to default device
-    try:
-        s = p.open(format=pyaudio.paInt16, channels=1, rate=rate,
-                   input=True, frames_per_buffer=chunk)
-        print("Audio stream opened on default device")
-        return s
-    except Exception as e:
-        print(f"Default device failed: {e} — trying all devices...")
-
-    # Try every input device
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        if info['maxInputChannels'] > 0:
-            try:
-                s = p.open(format=pyaudio.paInt16, channels=1, rate=rate,
-                           input=True, frames_per_buffer=chunk,
-                           input_device_index=i)
-                print(f"Audio stream opened on device {i}: {info['name']}")
-                return s
-            except Exception:
-                continue
-
-    print("ERROR: No working audio input device found!")
-    return None
-
-stream = open_audio_stream()
+# Set environment variable for ALSA
+os.environ['PA_ALSA_PLUGHW'] = '1'
 
 # Initialize Last.fm network (optional — runs without it)
 network = None
