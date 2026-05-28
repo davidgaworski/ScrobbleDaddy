@@ -7,3 +7,4 @@ requests
 sounddevice
 soundfile
 pylast
+qrcode[pil]

@@ -12,6 +12,7 @@ import soundfile as sf
 import pylast
 import time
 import datetime
+from setup_server import start_setup_server, generate_qr_surface, credentials_updated
 
 
 # Load configuration from a JSON file
@@ -121,22 +122,36 @@ os.environ['PA_ALSA_PLUGHW'] = '1'
 # Initialize Last.fm network (optional — runs without it)
 network = None
 lastfm_enabled = False
+setup_server = None
+setup_qr_surface = None
 
-if (config['lastfm']['api_key'] and config['lastfm']['api_secret']
-        and config['lastfm']['username'] and config['lastfm']['password']):
-    try:
-        network = pylast.LastFMNetwork(
-            api_key=config['lastfm']['api_key'],
-            api_secret=config['lastfm']['api_secret'],
-            username=config['lastfm']['username'],
-            password_hash=pylast.md5(config['lastfm']['password']),
-        )
-        lastfm_enabled = True
-        print(f"Last.fm connected as: {config['lastfm']['username']}")
-    except Exception as e:
-        print(f"Last.fm connection failed: {e} — running without scrobbling")
-else:
-    print("Last.fm credentials not configured — running without scrobbling")
+def connect_lastfm():
+    """Try to connect to Last.fm with current config."""
+    global network, lastfm_enabled, config
+    config = load_config()  # Reload in case setup server updated it
+    if (config['lastfm']['api_key'] and config['lastfm']['api_secret']
+            and config['lastfm']['username'] and config['lastfm']['password']):
+        try:
+            network = pylast.LastFMNetwork(
+                api_key=config['lastfm']['api_key'],
+                api_secret=config['lastfm']['api_secret'],
+                username=config['lastfm']['username'],
+                password_hash=pylast.md5(config['lastfm']['password']),
+            )
+            lastfm_enabled = True
+            print(f"Last.fm connected as: {config['lastfm']['username']}")
+            return True
+        except Exception as e:
+            print(f"Last.fm connection failed: {e}")
+    return False
+
+# Try initial connection
+if not connect_lastfm():
+    print("Last.fm not configured — starting QR setup server...")
+    setup_url, setup_server = start_setup_server(
+        os.path.join(os.getcwd(), 'config.json')
+    )
+    setup_qr_surface = generate_qr_surface(setup_url)
 
 duration = 10  # seconds
 
@@ -433,6 +448,7 @@ def create_vinyl(size, label_img=None):
 
 def startApp():
     global running, artist_start_index, track_start_index, vinyl_angle, cached_vinyl, cached_rotated_vinyl, vinyl_frame_counter, reflection_surface
+    global setup_server, setup_qr_surface, lastfm_enabled, network
     clock = pygame.time.Clock()
 
     start_recognition_thread()
@@ -449,6 +465,16 @@ def startApp():
 
         screen.fill(BG_COLOR)
 
+        # --- Check if credentials were just submitted via QR setup ---
+        if credentials_updated.is_set():
+            credentials_updated.clear()
+            if connect_lastfm():
+                setup_qr_surface = None
+                if setup_server:
+                    setup_server.shutdown()
+                    setup_server = None
+                invalidate_album_cache()
+
         # --- Get audio data ---
         bands = get_frequency_bands()
 
@@ -461,13 +487,23 @@ def startApp():
                              border_radius=4)
             screen.blit(art_img, (ART_X, ART_Y))
         else:
-            # Placeholder when no song detected yet
-            pygame.draw.rect(screen, (25, 25, 40),
-                             (ART_X, ART_Y, ART_SIZE, ART_SIZE),
-                             border_radius=4)
-            ph = font_small.render("Listening...", True, (80, 80, 110))
-            ph_rect = ph.get_rect(center=(ART_X + ART_SIZE // 2, ART_Y + ART_SIZE // 2))
-            screen.blit(ph, ph_rect)
+            # Show QR code if setup is needed, otherwise show placeholder
+            if setup_qr_surface and not lastfm_enabled:
+                # QR code setup screen
+                qr_x = (LEFT_PANEL_W - setup_qr_surface.get_width()) // 2
+                qr_y = ART_Y
+                screen.blit(setup_qr_surface, (qr_x, qr_y))
+
+                scan_text = font_small.render("Scan to connect Last.fm", True, TEXT_DIM)
+                scan_rect = scan_text.get_rect(centerx=LEFT_PANEL_W // 2, y=qr_y + setup_qr_surface.get_height() + 12)
+                screen.blit(scan_text, scan_rect)
+            else:
+                pygame.draw.rect(screen, (25, 25, 40),
+                                 (ART_X, ART_Y, ART_SIZE, ART_SIZE),
+                                 border_radius=4)
+                ph = font_small.render("Listening...", True, (80, 80, 110))
+                ph_rect = ph.get_rect(center=(ART_X + ART_SIZE // 2, ART_Y + ART_SIZE // 2))
+                screen.blit(ph, ph_rect)
 
         # --- Left Panel: Song Info ---
         info_y = ART_Y + ART_SIZE + 20
