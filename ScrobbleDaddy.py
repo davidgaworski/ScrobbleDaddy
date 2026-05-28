@@ -41,7 +41,7 @@ else:
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("ScrobbleDaddy")
 
-NUM_BARS = 32
+NUM_BARS = 20
 
 last_track_title = ""
 last_artist_name = ""
@@ -258,8 +258,21 @@ def start_recognition_thread():
     thread.daemon = True
     thread.start()
 
-# Function to get frequency bands from audio data
+# Pre-compute FFT band indices (same every frame, expensive to recalculate)
+_band_edges = np.logspace(np.log10(200), np.log10(config['audio']['sample_rate'] // 2), NUM_BARS + 1)
+_precomputed_indices = None
+
+def _build_band_indices(n_samples):
+    global _precomputed_indices
+    freqs = np.fft.fftfreq(n_samples, 1 / config['audio']['sample_rate'])
+    _precomputed_indices = []
+    for i in range(NUM_BARS):
+        _precomputed_indices.append(
+            np.where((freqs >= _band_edges[i]) & (freqs < _band_edges[i + 1]))[0]
+        )
+
 def get_frequency_bands():
+    global _precomputed_indices
     if stream is None:
         return np.zeros(NUM_BARS)
 
@@ -268,22 +281,13 @@ def get_frequency_bands():
     except Exception:
         return np.zeros(NUM_BARS)
 
-    # Perform FFT on the audio data
-    fft_data = np.fft.fft(data)
-    magnitudes = np.abs(fft_data)
-    freqs = np.fft.fftfreq(len(data), 1 / config['audio']['sample_rate'])
+    if _precomputed_indices is None:
+        _build_band_indices(len(data))
 
-    band_edges = np.logspace(np.log10(200), np.log10(config['audio']['sample_rate'] // 2), NUM_BARS + 1)
+    magnitudes = np.abs(np.fft.rfft(data))
 
-    bands = []
-    for i in range(NUM_BARS):
-        band_start = band_edges[i]
-        band_end = band_edges[i + 1]
-        band_indices = np.where((freqs >= band_start) & (freqs < band_end))[0]
-        band_magnitude = np.sum(magnitudes[band_indices])
-        bands.append(band_magnitude)
-
-    return np.array(bands)
+    bands = np.array([np.sum(magnitudes[idx[idx < len(magnitudes)]]) for idx in _precomputed_indices])
+    return bands
 
 # Function to draw the equalizer (bars)
 def draw_equalizer(bands, barSurface):
@@ -505,10 +509,11 @@ def startApp():
         draw_equalizer(bands, bar_surface)
         screen.blit(bar_surface, (LEFT_PANEL_W, 0))
 
-        # Reflection (flip + fade)
-        reflection = pygame.transform.flip(bar_surface, False, True)
-        reflection.set_alpha(50)
-        screen.blit(reflection, (LEFT_PANEL_W, HEIGHT // 2))
+        # Reflection (cached, update every 4th frame)
+        if vinyl_frame_counter % 4 == 0 or not hasattr(draw_equalizer, '_cached_refl'):
+            draw_equalizer._cached_refl = pygame.transform.flip(bar_surface, False, True)
+            draw_equalizer._cached_refl.set_alpha(50)
+        screen.blit(draw_equalizer._cached_refl, (LEFT_PANEL_W, HEIGHT // 2))
 
         # --- Spinning Vinyl Record (rotate every 3rd frame) ---
         vinyl_angle = (vinyl_angle + VINYL_SPEED) % 360
