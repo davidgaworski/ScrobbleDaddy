@@ -105,25 +105,30 @@ fi
 # Activate conda for the rest of the script
 source "$CONDA_SH"
 
+# Make conda available permanently
+"$(dirname "$(dirname "$CONDA_SH")")/bin/conda" init bash 2>/dev/null
+print_success "Conda added to your shell (takes effect on next login)."
+
 
 # ----------------------------------------------------------
 #  Step 3: Conda Environment
 # ----------------------------------------------------------
 print_step 3 "Creating the ScrobbleDaddyPy environment..."
 
+# Remove existing environment if present
 if conda env list | grep -q "ScrobbleDaddyPy"; then
-    print_skip "ScrobbleDaddyPy environment already exists."
-    print_info "To recreate it, run: conda env remove -n ScrobbleDaddyPy"
-else
-    echo ""
-    echo "    Creating Python environment and installing packages..."
-    echo "    (this may take several minutes)"
-    echo ""
-
-    conda create -n ScrobbleDaddyPy python=3.11 -y
-    conda run -n ScrobbleDaddyPy pip install -r "$SCRIPT_DIR/requirements.txt"
-    print_success "Conda environment created."
+    echo "    Removing existing environment..."
+    conda env remove -n ScrobbleDaddyPy -y
 fi
+
+echo ""
+echo "    Creating Python environment and installing packages..."
+echo "    (this may take several minutes)"
+echo ""
+
+conda create -n ScrobbleDaddyPy python=3.11 -y
+conda run -n ScrobbleDaddyPy pip install -r "$SCRIPT_DIR/requirements.txt"
+print_success "Conda environment created."
 
 
 # ----------------------------------------------------------
