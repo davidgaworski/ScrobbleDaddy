@@ -28,30 +28,6 @@ if [ "$1" = "--remove" ]; then
 fi
 
 # ----------------------------------------------------------
-#  Find Conda
-# ----------------------------------------------------------
-CONDA_SH=""
-for path in "$HOME/miniconda3" "$HOME/miniforge3" "$HOME/anaconda3" "$HOME/mambaforge"; do
-    if [ -f "$path/etc/profile.d/conda.sh" ]; then
-        CONDA_SH="$path/etc/profile.d/conda.sh"
-        break
-    fi
-done
-
-if [ -z "$CONDA_SH" ]; then
-    echo ""
-    echo "❌  Could not find a Conda installation."
-    echo "    Looked in: ~/miniconda3, ~/miniforge3, ~/anaconda3, ~/mambaforge"
-    echo ""
-    echo "    If Conda is installed somewhere else, edit this script and"
-    echo "    set CONDA_SH to the path of your conda.sh file."
-    exit 1
-fi
-
-echo ""
-echo "🔍  Found Conda at: $CONDA_SH"
-
-# ----------------------------------------------------------
 #  Create the autostart directory & desktop entry
 # ----------------------------------------------------------
 mkdir -p "$HOME/.config/autostart"
@@ -61,7 +37,7 @@ cat > "$DESKTOP_FILE" << EOF
 Type=Application
 Name=ScrobbleDaddy
 Comment=Auto-scrobble vinyl to Last.fm
-Exec=/bin/bash -c "sleep 10 && source $CONDA_SH && conda activate ScrobbleDaddyPy && cd $SCRIPT_DIR && python ScrobbleDaddy.py"
+Exec=/bin/bash -c "sleep 10 && $SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/ScrobbleDaddy.py"
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF

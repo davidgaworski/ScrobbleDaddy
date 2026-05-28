@@ -13,6 +13,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.json"
+VENV_DIR="$SCRIPT_DIR/venv"
 
 # ----------------------------------------------------------
 #  Colors for pretty output
@@ -30,7 +31,7 @@ print_skip()    { echo -e "    ${YELLOW}⏭️   $1${NC}"; }
 print_error()   { echo -e "    ${RED}❌  $1${NC}"; }
 print_info()    { echo -e "    ${YELLOW}ℹ️   $1${NC}"; }
 
-TOTAL_STEPS=6
+TOTAL_STEPS=5
 
 # =============================================================
 echo -e "${BOLD}"
@@ -50,91 +51,48 @@ print_step 1 "Installing system dependencies..."
 sudo apt update -y
 sudo apt install -y \
     git \
+    python3 \
+    python3-venv \
+    python3-pip \
+    python3-dev \
     portaudio19-dev \
     libsdl2-dev \
     libsdl2-mixer-dev \
     libsdl2-image-dev \
     libsdl2-ttf-dev \
     libsndfile1-dev \
-    wget
+    ffmpeg
 
 print_success "System dependencies installed."
 
 
 # ----------------------------------------------------------
-#  Step 2: Miniconda
+#  Step 2: Python Virtual Environment
 # ----------------------------------------------------------
-print_step 2 "Setting up Miniconda..."
+print_step 2 "Setting up Python environment..."
 
-CONDA_SH=""
-for path in "$HOME/miniconda3" "$HOME/miniforge3" "$HOME/anaconda3" "$HOME/mambaforge"; do
-    if [ -f "$path/etc/profile.d/conda.sh" ]; then
-        CONDA_SH="$path/etc/profile.d/conda.sh"
-        break
-    fi
-done
-
-if [ -n "$CONDA_SH" ]; then
-    print_skip "Conda already installed at: $CONDA_SH"
-else
-    echo ""
-    echo "    Downloading Miniconda (this may take a few minutes)..."
-    echo ""
-
-    # Detect architecture
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "aarch64" ]; then
-        MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh"
-    elif [ "$ARCH" = "x86_64" ]; then
-        MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-    elif [ "$ARCH" = "armv7l" ]; then
-        MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-armv7l.sh"
-    else
-        print_error "Unsupported architecture: $ARCH"
-        exit 1
-    fi
-
-    wget -q --show-progress "$MINICONDA_URL" -O /tmp/miniconda_installer.sh
-    bash /tmp/miniconda_installer.sh -b -p "$HOME/miniconda3"
-    rm /tmp/miniconda_installer.sh
-
-    CONDA_SH="$HOME/miniconda3/etc/profile.d/conda.sh"
-    print_success "Miniconda installed."
-fi
-
-# Activate conda for the rest of the script
-source "$CONDA_SH"
-
-# Make conda available permanently
-"$(dirname "$(dirname "$CONDA_SH")")/bin/conda" init bash 2>/dev/null
-print_success "Conda added to your shell (takes effect on next login)."
-
-
-# ----------------------------------------------------------
-#  Step 3: Conda Environment
-# ----------------------------------------------------------
-print_step 3 "Creating the ScrobbleDaddyPy environment..."
-
-# Remove existing environment if present
-if conda env list | grep -q "ScrobbleDaddyPy"; then
+# Remove existing venv if present
+if [ -d "$VENV_DIR" ]; then
     echo "    Removing existing environment..."
-    conda env remove -n ScrobbleDaddyPy -y
+    rm -rf "$VENV_DIR"
 fi
 
 echo ""
-echo "    Creating Python environment and installing packages..."
+echo "    Creating virtual environment and installing packages..."
 echo "    (this may take several minutes)"
 echo ""
 
-conda create -n ScrobbleDaddyPy python=3.11 -y
-conda run -n ScrobbleDaddyPy pip install -r "$SCRIPT_DIR/requirements.txt"
-print_success "Conda environment created."
+python3 -m venv "$VENV_DIR"
+"$VENV_DIR/bin/pip" install --upgrade pip
+"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
+
+print_success "Python environment created at $VENV_DIR"
 
 
 # ----------------------------------------------------------
-#  Step 4: Last.fm Configuration
+#  Step 3: Last.fm Configuration
 # ----------------------------------------------------------
-print_step 4 "Configuring Last.fm..."
+print_step 3 "Configuring Last.fm..."
 
 # Check if credentials are already filled in
 CURRENT_USERNAME=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['lastfm']['username'])")
@@ -188,14 +146,12 @@ fi
 
 
 # ----------------------------------------------------------
-#  Step 5: Audio Device Setup
+#  Step 4: Audio Device Setup
 # ----------------------------------------------------------
-print_step 5 "Detecting audio devices..."
-
-conda activate ScrobbleDaddyPy
+print_step 4 "Detecting audio devices..."
 
 echo ""
-python -c "
+"$VENV_DIR/bin/python" -c "
 import sounddevice as sd
 devices = sd.query_devices()
 print('    Available audio devices:')
@@ -235,9 +191,9 @@ print_success "Audio device set to index $DEVICE_INDEX"
 
 
 # ----------------------------------------------------------
-#  Step 6: Auto-Start Setup
+#  Step 5: Auto-Start Setup
 # ----------------------------------------------------------
-print_step 6 "Auto-start configuration..."
+print_step 5 "Auto-start configuration..."
 
 echo ""
 read -p "    Would you like ScrobbleDaddy to start automatically on boot? (Y/n): " AUTOSTART
@@ -261,8 +217,7 @@ echo "  ╚═══════════════════════
 echo -e "${NC}"
 echo "  To start ScrobbleDaddy right now:"
 echo ""
-echo "      conda activate ScrobbleDaddyPy"
-echo "      python ScrobbleDaddy.py"
+echo "      bash run.sh"
 echo ""
 echo "  Put on a record and enjoy! 🎶"
 echo ""
