@@ -584,7 +584,7 @@ def startApp():
             cached_rotated_vinyl = pygame.transform.rotate(cached_vinyl, vinyl_angle)
 
         rot_rect = cached_rotated_vinyl.get_rect(
-            center=(LEFT_PANEL_W // 2, HEIGHT - VINYL_SIZE // 2 - 10))
+            center=(WIDTH - VINYL_SIZE // 2 - 20, HEIGHT - VINYL_SIZE // 2 - 10))
         screen.blit(cached_rotated_vinyl, rot_rect)
 
         # --- Flip ---
