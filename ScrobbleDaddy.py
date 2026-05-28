@@ -86,7 +86,7 @@ prev_bands = None
 cached_vinyl = None
 vinyl_angle = 0
 VINYL_SIZE = 120
-VINYL_SPEED = 8.0  # degrees per frame
+VINYL_SPEED = 270.0 / TARGET_FPS  # 45 RPM
 cached_rotated_vinyl = None
 vinyl_frame_counter = 0
 
