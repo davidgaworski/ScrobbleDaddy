@@ -30,18 +30,19 @@ running = True
 
 # Set up the display — fullscreen on Linux (Pi), windowed on Mac
 import platform
-if platform.system() == 'Linux':
+IS_PI = platform.system() == 'Linux'
+if IS_PI:
     display_info = pygame.display.Info()
     WIDTH = display_info.current_w
     HEIGHT = display_info.current_h
-    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.HWSURFACE)
 else:
     WIDTH = config['gui']['screen_width']
     HEIGHT = config['gui']['screen_height']
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.DOUBLEBUF)
 pygame.display.set_caption("ScrobbleDaddy")
 
-NUM_BARS = 20
+NUM_BARS = 48
 
 last_track_title = ""
 last_artist_name = ""
@@ -71,8 +72,12 @@ cached_album_art = None
 cached_album_art_path = None
 cached_lastfm_img = None
 
-# Pre-allocate surfaces (reuse each frame instead of creating new ones)
-bar_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT // 2))
+# Pre-allocate surfaces with convert() for fast blitting
+bar_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT // 2)).convert()
+reflection_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT // 2)).convert()
+
+# Adaptive FPS
+TARGET_FPS = 45 if IS_PI else 60
 
 # Equalizer smoothing state
 prev_bands = None
@@ -244,6 +249,7 @@ async def update_song_information():
             update_gui(result)
     else:
         print("Failed to record audio")
+        time.sleep(15)
 
 def run_recognition_loop():
     while True:
@@ -437,7 +443,7 @@ def create_vinyl(size, label_img=None):
     return surface
 
 def startApp():
-    global running, artist_start_index, track_start_index, vinyl_angle, cached_vinyl, cached_rotated_vinyl, vinyl_frame_counter
+    global running, artist_start_index, track_start_index, vinyl_angle, cached_vinyl, cached_rotated_vinyl, vinyl_frame_counter, reflection_surface
     clock = pygame.time.Clock()
 
     start_recognition_thread()
@@ -510,10 +516,11 @@ def startApp():
         screen.blit(bar_surface, (LEFT_PANEL_W, 0))
 
         # Reflection (cached, update every 4th frame)
-        if vinyl_frame_counter % 4 == 0 or not hasattr(draw_equalizer, '_cached_refl'):
-            draw_equalizer._cached_refl = pygame.transform.flip(bar_surface, False, True)
-            draw_equalizer._cached_refl.set_alpha(50)
-        screen.blit(draw_equalizer._cached_refl, (LEFT_PANEL_W, HEIGHT // 2))
+        if vinyl_frame_counter % 4 == 0:
+            reflection_surface.blit(bar_surface, (0, 0))
+            reflection_surface = pygame.transform.flip(reflection_surface, False, True)
+            reflection_surface.set_alpha(50)
+        screen.blit(reflection_surface, (LEFT_PANEL_W, HEIGHT // 2))
 
         # --- Spinning Vinyl Record (rotate every 3rd frame) ---
         vinyl_angle = (vinyl_angle + VINYL_SPEED) % 360
@@ -531,7 +538,7 @@ def startApp():
 
         # --- Flip ---
         pygame.display.flip()
-        clock.tick(30)
+        clock.tick(TARGET_FPS)
 
 def stopApp():
     stream.stop_stream()
