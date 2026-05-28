@@ -1,7 +1,7 @@
 {
     "lastfm": {
-        "username": "",
-        "password": "",
+        "username": "snitchsnitch",
+        "password": "Cookie14dpgeh!",
         "api_key": "bac83a2f2e62d09613d121ca51d17377",
         "api_secret": "24f561a98caaf02a7d404c91675b69bd"
     },
@@ -19,9 +19,12 @@
         "screen_height": 680,
         "screen_width": 1024,
         "update_interval": 15000,
-        "image_resize": [550, 550],
+        "image_resize": [
+            550,
+            550
+        ],
         "blur_strength": 10,
-        "border_size_ratio": 0.20,
+        "border_size_ratio": 0.2,
         "base_font_size": 10
     },
     "network": {

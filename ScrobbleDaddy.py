@@ -448,13 +448,39 @@ def create_vinyl(size, label_img=None):
 
     return surface
 
+def create_qr_vinyl(qr_surface, size=300):
+    """Create a vinyl record with a QR code as the center label."""
+    surface = pygame.Surface((size, size), pygame.SRCALPHA)
+    center = size // 2
+    radius = center - 2
+
+    # Vinyl disc
+    pygame.draw.circle(surface, (30, 30, 35), (center, center), radius)
+    pygame.draw.circle(surface, (55, 55, 60), (center, center), radius, 2)
+
+    # Grooves
+    for r in range(radius - 8, size // 3, -5):
+        pygame.draw.circle(surface, (40, 40, 45), (center, center), r, 1)
+
+    # QR code as the center label (large enough to scan)
+    qr_size = int(size * 0.55)
+    qr_scaled = pygame.transform.scale(qr_surface, (qr_size, qr_size))
+    qr_x = center - qr_size // 2
+    qr_y = center - qr_size // 2
+
+    # White circle background for QR contrast
+    pygame.draw.circle(surface, (255, 255, 255), (center, center), qr_size // 2 + 4)
+    pygame.draw.circle(surface, (200, 200, 200), (center, center), qr_size // 2 + 4, 1)
+
+    # Blit QR code
+    surface.blit(qr_scaled, (qr_x, qr_y))
+
+    return surface
+
 def startApp():
     global running, artist_start_index, track_start_index, vinyl_angle, cached_vinyl, cached_rotated_vinyl, vinyl_frame_counter, reflection_surface
-    global setup_server, setup_qr_surface, lastfm_enabled, network, show_qr
+    global setup_server, setup_qr_surface, lastfm_enabled, network
     clock = pygame.time.Clock()
-
-    # Setup button rect
-    setup_btn_rect = pygame.Rect(LEFT_PANEL_W - 70, 10, 60, 24)
 
     start_recognition_thread()
     startSongThread()
@@ -467,9 +493,6 @@ def startApp():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if setup_btn_rect.collidepoint(event.pos):
-                    show_qr = not show_qr
 
         screen.fill(BG_COLOR)
 
@@ -477,36 +500,25 @@ def startApp():
         if credentials_updated.is_set():
             credentials_updated.clear()
             if connect_lastfm():
-                show_qr = False
                 invalidate_album_cache()
 
         # --- Get audio data ---
         bands = get_frequency_bands()
 
         # --- Left Panel: Album Art ---
-        if show_qr and setup_qr_surface:
-            # QR code overlay
-            qr_x = (LEFT_PANEL_W - setup_qr_surface.get_width()) // 2
-            qr_y = ART_Y
-            screen.blit(setup_qr_surface, (qr_x, qr_y))
-
-            scan_text = font_small.render("Scan to connect Last.fm", True, TEXT_DIM)
-            scan_rect = scan_text.get_rect(centerx=LEFT_PANEL_W // 2, y=qr_y + setup_qr_surface.get_height() + 12)
-            screen.blit(scan_text, scan_rect)
+        art_img = load_cached_image("image.jpg", (ART_SIZE, ART_SIZE), 'album')
+        if art_img:
+            pygame.draw.rect(screen, BORDER_COLOR,
+                             (ART_X - 3, ART_Y - 3, ART_SIZE + 6, ART_SIZE + 6),
+                             border_radius=4)
+            screen.blit(art_img, (ART_X, ART_Y))
         else:
-            art_img = load_cached_image("image.jpg", (ART_SIZE, ART_SIZE), 'album')
-            if art_img:
-                pygame.draw.rect(screen, BORDER_COLOR,
-                                 (ART_X - 3, ART_Y - 3, ART_SIZE + 6, ART_SIZE + 6),
-                                 border_radius=4)
-                screen.blit(art_img, (ART_X, ART_Y))
-            else:
-                pygame.draw.rect(screen, (25, 25, 40),
-                                 (ART_X, ART_Y, ART_SIZE, ART_SIZE),
-                                 border_radius=4)
-                ph = font_small.render("Listening...", True, (80, 80, 110))
-                ph_rect = ph.get_rect(center=(ART_X + ART_SIZE // 2, ART_Y + ART_SIZE // 2))
-                screen.blit(ph, ph_rect)
+            pygame.draw.rect(screen, (25, 25, 40),
+                             (ART_X, ART_Y, ART_SIZE, ART_SIZE),
+                             border_radius=4)
+            ph = font_small.render("Listening...", True, (80, 80, 110))
+            ph_rect = ph.get_rect(center=(ART_X + ART_SIZE // 2, ART_Y + ART_SIZE // 2))
+            screen.blit(ph, ph_rect)
 
         # --- Left Panel: Song Info ---
         info_y = ART_Y + ART_SIZE + 20
@@ -523,7 +535,7 @@ def startApp():
             rect = surf.get_rect(centerx=LEFT_PANEL_W // 2, y=info_y + 35)
             screen.blit(surf, rect)
 
-        # --- Left Panel: Last.fm Info + Setup Button ---
+        # --- Left Panel: Last.fm Info ---
         if lastfm_enabled:
             lfm_img = load_cached_image("lastfm.jpg", (28, 28), 'lastfm')
             if lfm_img:
@@ -533,13 +545,6 @@ def startApp():
             plays = font_small.render(str(last_track_play_count) + ' plays', True, TEXT_DIM)
             plays_rect = plays.get_rect(centerx=LEFT_PANEL_W // 2, y=info_y + 68)
             screen.blit(plays, plays_rect)
-        
-        # Setup button (always visible)
-        btn_color = (100, 50, 160) if show_qr else (50, 30, 80)
-        pygame.draw.rect(screen, btn_color, setup_btn_rect, border_radius=6)
-        btn_text = font_small.render("Setup", True, TEXT_DIM)
-        btn_text_rect = btn_text.get_rect(center=setup_btn_rect.center)
-        screen.blit(btn_text, btn_text_rect)
 
         # --- Divider ---
         pygame.draw.line(screen, (40, 20, 70),
@@ -555,7 +560,13 @@ def startApp():
         reflection_surface.set_alpha(50)
         screen.blit(reflection_surface, (LEFT_PANEL_W, HEIGHT // 2))
 
-        # --- Spinning Vinyl Record (rotate every 3rd frame) ---
+        # --- QR code (top-right, blended) ---
+        if setup_qr_surface:
+            qr_x = WIDTH - setup_qr_surface.get_width() - 10
+            qr_y = 10
+            screen.blit(setup_qr_surface, (qr_x, qr_y))
+
+        # --- Spinning Vinyl Record (bottom-right) ---
         vinyl_angle = (vinyl_angle + VINYL_SPEED) % 360
         vinyl_frame_counter += 1
 

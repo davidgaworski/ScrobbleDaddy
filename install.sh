@@ -63,6 +63,14 @@ sudo apt install -y \
 
 print_success "System dependencies installed."
 
+# Open port 8080 for QR setup server (if firewall is active)
+if command -v ufw &>/dev/null && sudo ufw status | grep -q "active"; then
+    sudo ufw allow 8080/tcp comment "ScrobbleDaddy Setup" 2>/dev/null
+    print_success "Firewall: port 8080 opened for QR setup"
+else
+    print_skip "No active firewall — port 8080 already accessible"
+fi
+
 
 # ----------------------------------------------------------
 #  Step 2: Miniforge
