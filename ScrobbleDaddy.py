@@ -183,16 +183,34 @@ isRecording = False
 
 def record_audio():
     global isRecording
-    samplerate = 44100  # Hertz
+    if stream is None:
+        print("No audio stream available for recording")
+        return None
+
     filename = 'output.wav'
+    samplerate = config['audio']['sample_rate']
+    chunk = config['audio']['chunk_size']
+    record_seconds = config['audio']['record_seconds']
 
     isRecording = True
     try:
-        print(f"Recording {config['audio']['record_seconds']}s...")
-        mydata = sd.rec(int(samplerate * config['audio']['record_seconds']), samplerate=44100,
-                        channels=1, blocking=True)
+        print(f"Recording {record_seconds}s...")
+        frames = []
+        num_chunks = int(samplerate / chunk * record_seconds)
 
-        sf.write(filename, mydata, samplerate)
+        for _ in range(num_chunks):
+            data = stream.read(chunk, exception_on_overflow=False)
+            frames.append(data)
+
+        # Write WAV file
+        import wave
+        wf = wave.open(filename, 'wb')
+        wf.setnchannels(1)
+        wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
+        wf.setframerate(samplerate)
+        wf.writeframes(b''.join(frames))
+        wf.close()
+
         print(f"Recording saved to {filename}")
         isRecording = False
         return filename
