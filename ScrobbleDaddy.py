@@ -104,6 +104,14 @@ os.environ['PA_ALSA_PLUGHW'] = '1'
 
 p = pyaudio.PyAudio()
 
+# List all audio devices at startup
+print("\n--- Audio Devices ---")
+for i in range(p.get_device_count()):
+    info = p.get_device_info_by_index(i)
+    if info['maxInputChannels'] > 0:
+        print(f"  🎤 [{i}] {info['name']} (inputs: {info['maxInputChannels']}, rate: {int(info['defaultSampleRate'])})")
+print("---------------------\n")
+
 # Find a working input device
 def open_audio_stream():
     """Try configured device, then fall back to default."""
@@ -284,7 +292,11 @@ async def update_song_information():
 
 def run_recognition_loop():
     while True:
-        asyncio.run(update_song_information())
+        try:
+            asyncio.run(update_song_information())
+        except Exception as e:
+            print(f"Recognition error (retrying): {e}")
+            time.sleep(5)
 
 def start_recognition_thread():
     thread = threading.Thread(target=run_recognition_loop)
@@ -293,32 +305,26 @@ def start_recognition_thread():
 
 # Function to get frequency bands from audio data
 def get_frequency_bands():
-    # Read a chunk of audio data
-    data = np.frombuffer(stream.read(config['audio']['chunk_size'], exception_on_overflow=False), dtype=np.int16)
+    if stream is None:
+        return np.zeros(NUM_BARS)
+
+    try:
+        data = np.frombuffer(stream.read(config['audio']['chunk_size'], exception_on_overflow=False), dtype=np.int16)
+    except Exception:
+        return np.zeros(NUM_BARS)
 
     # Perform FFT on the audio data
     fft_data = np.fft.fft(data)
-
-    # Get the magnitudes of the FFT result (abs value of the complex numbers)
     magnitudes = np.abs(fft_data)
-
-    # Calculate frequency bins
     freqs = np.fft.fftfreq(len(data), 1 / config['audio']['sample_rate'])
 
-    # Split the frequency spectrum into 31 bands (e.g., from 20 Hz to 20 kHz)
     band_edges = np.logspace(np.log10(200), np.log10(config['audio']['sample_rate'] // 2), NUM_BARS + 1)
 
-    # Create a list to store the sum of magnitudes in each frequency band
     bands = []
     for i in range(NUM_BARS):
-        # Frequency range for this band
         band_start = band_edges[i]
         band_end = band_edges[i + 1]
-
-        # Find indices corresponding to the frequency range
         band_indices = np.where((freqs >= band_start) & (freqs < band_end))[0]
-
-        # Sum the magnitudes of the frequencies in the current band
         band_magnitude = np.sum(magnitudes[band_indices])
         bands.append(band_magnitude)
 
