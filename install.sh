@@ -137,15 +137,13 @@ fi
 
 if [ "$SKIP_LASTFM" != "true" ]; then
     echo ""
-    echo "    Get your API key: https://www.last.fm/api/account/create"
-    echo "    (Leave blank to skip — edit config.json later)"
+    echo "    Enter your Last.fm credentials to enable scrobbling."
+    echo "    (Leave blank to skip — you can edit config.json later)"
     echo ""
 
     read -p "    Last.fm Username: " LASTFM_USER
     read -sp "    Last.fm Password: " LASTFM_PASS
     echo ""
-    read -p "    API Key:          " LASTFM_KEY
-    read -p "    API Secret:       " LASTFM_SECRET
 
     "$PYTHON" << PYEOF
 import json
@@ -153,8 +151,6 @@ with open("$CONFIG_FILE", "r") as f:
     config = json.load(f)
 config["lastfm"]["username"] = """$LASTFM_USER"""
 config["lastfm"]["password"] = """$LASTFM_PASS"""
-config["lastfm"]["api_key"] = """$LASTFM_KEY"""
-config["lastfm"]["api_secret"] = """$LASTFM_SECRET"""
 with open("$CONFIG_FILE", "w") as f:
     json.dump(config, f, indent=4)
     f.write("\n")

@@ -2,8 +2,8 @@
     "lastfm": {
         "username": "",
         "password": "",
-        "api_key": "",
-        "api_secret": ""
+        "api_key": "bac83a2f2e62d09613d121ca51d17377",
+        "api_secret": "24f561a98caaf02a7d404c91675b69bd"
     },
     "audio": {
         "format": "paInt16",
