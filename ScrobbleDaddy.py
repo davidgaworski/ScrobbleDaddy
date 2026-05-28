@@ -362,9 +362,15 @@ def draw_equalizer(bands, barSurface):
     max_width = WIDTH - LEFT_PANEL_W - 20
     bar_width = max(2, (max_width / NUM_BARS) - BAR_GAP)
 
-    # Smooth animation — blend with previous frame
+    # Smooth animation — heavier blend for fluid motion
     if prev_bands is not None and len(prev_bands) == len(bands):
-        bands = 0.35 * bands + 0.65 * prev_bands
+        # Bars rise quickly but fall slowly (gravity decay)
+        smoothed = np.where(
+            bands > prev_bands,
+            0.4 * bands + 0.6 * prev_bands,   # rising: faster
+            0.15 * bands + 0.85 * prev_bands   # falling: slower (smooth decay)
+        )
+        bands = smoothed
     prev_bands = bands.copy()
 
     # Dynamic normalization
