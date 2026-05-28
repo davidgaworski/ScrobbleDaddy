@@ -31,7 +31,7 @@ running = True
 # Define screen dimensions
 WIDTH = config['gui']['screen_width']
 HEIGHT = config['gui']['screen_height']
-NUM_BARS = 64
+NUM_BARS = 32
 
 last_track_title = ""
 last_artist_name = ""
@@ -66,8 +66,7 @@ cached_album_art_path = None
 cached_lastfm_img = None
 
 # Pre-allocate surfaces (reuse each frame instead of creating new ones)
-bar_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT // 2))
-reflection_surface = None
+bar_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT))
 
 # Equalizer smoothing state
 prev_bands = None
@@ -76,7 +75,9 @@ prev_bands = None
 cached_vinyl = None
 vinyl_angle = 0
 VINYL_SIZE = 120
-VINYL_SPEED = 2.0  # degrees per frame (~33 RPM at 60fps)
+VINYL_SPEED = 2.0  # degrees per frame
+cached_rotated_vinyl = None
+vinyl_frame_counter = 0
 
 chunk_size = 30
 track_start_index = 0
@@ -279,7 +280,7 @@ def get_frequency_bands():
 def draw_equalizer(bands, barSurface):
     global prev_bands
 
-    max_height = (HEIGHT // 2) - 60
+    max_height = HEIGHT - 80
     max_width = WIDTH - LEFT_PANEL_W - 20
     bar_width = max(2, (max_width / NUM_BARS) - BAR_GAP)
 
@@ -306,7 +307,7 @@ def draw_equalizer(bands, barSurface):
         b = min(255, int(bar_colors[i][2] * brightness))
 
         pygame.draw.rect(barSurface, (r, g, b),
-                         (bar_x, (HEIGHT // 2) - bar_height, bar_width, bar_height))
+                         (bar_x, HEIGHT - bar_height, bar_width, bar_height))
 
 def scrollArtist():
     global artist_start_index
@@ -417,7 +418,7 @@ def create_vinyl(size, label_img=None):
     return surface
 
 def startApp():
-    global running, artist_start_index, track_start_index, vinyl_angle, cached_vinyl
+    global running, artist_start_index, track_start_index, vinyl_angle, cached_vinyl, cached_rotated_vinyl, vinyl_frame_counter
     clock = pygame.time.Clock()
 
     start_recognition_thread()
@@ -489,25 +490,23 @@ def startApp():
         draw_equalizer(bands, bar_surface)
         screen.blit(bar_surface, (LEFT_PANEL_W, 0))
 
-        # Reflection (flip + fade)
-        reflection = pygame.transform.flip(bar_surface, False, True)
-        reflection.set_alpha(60)
-        screen.blit(reflection, (LEFT_PANEL_W, HEIGHT // 2))
-
-        # --- Spinning Vinyl Record ---
+        # --- Spinning Vinyl Record (rotate every 3rd frame) ---
         vinyl_angle = (vinyl_angle + VINYL_SPEED) % 360
+        vinyl_frame_counter += 1
 
         if cached_vinyl is None:
             cached_vinyl = create_vinyl(VINYL_SIZE, art_img)
 
-        rotated = pygame.transform.rotate(cached_vinyl, vinyl_angle)
-        rot_rect = rotated.get_rect(
+        if cached_rotated_vinyl is None or vinyl_frame_counter % 3 == 0:
+            cached_rotated_vinyl = pygame.transform.rotate(cached_vinyl, vinyl_angle)
+
+        rot_rect = cached_rotated_vinyl.get_rect(
             center=(WIDTH - VINYL_SIZE // 2 - 20, HEIGHT - VINYL_SIZE // 2 - 15))
-        screen.blit(rotated, rot_rect)
+        screen.blit(cached_rotated_vinyl, rot_rect)
 
         # --- Flip ---
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(30)
 
 def stopApp():
     stream.stop_stream()
