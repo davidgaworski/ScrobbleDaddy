@@ -138,18 +138,21 @@ def record_audio():
     global isRecording
     samplerate = 44100  # Hertz
     filename = 'output.wav'
-    device_index = config['audio'].get('device_index', None)
 
     isRecording = True
-    print(f"Recording {config['audio']['record_seconds']}s from device {device_index}...")
-    mydata = sd.rec(int(samplerate * config['audio']['record_seconds']), samplerate=44100,
-                    channels=1, blocking=True, device=device_index)
+    try:
+        print(f"Recording {config['audio']['record_seconds']}s...")
+        mydata = sd.rec(int(samplerate * config['audio']['record_seconds']), samplerate=44100,
+                        channels=1, blocking=True)
 
-    sf.write(filename, mydata, samplerate)
-    print(f"Recording saved to {filename}")
-
-    isRecording = False
-    return filename
+        sf.write(filename, mydata, samplerate)
+        print(f"Recording saved to {filename}")
+        isRecording = False
+        return filename
+    except Exception as e:
+        print(f"Recording error: {e}")
+        isRecording = False
+        return None
 
 async def recognize_song(wav_file):
     shazam = Shazam()
