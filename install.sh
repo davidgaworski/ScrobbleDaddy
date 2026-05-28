@@ -58,66 +58,64 @@ sudo apt install -y \
     libsdl2-ttf-dev \
     libsndfile1-dev \
     ffmpeg \
-    alsa-utils
+    alsa-utils \
+    wget
 
 print_success "System dependencies installed."
 
 
 # ----------------------------------------------------------
-#  Step 2: Miniforge (conda for ARM)
+#  Step 2: Miniforge
 # ----------------------------------------------------------
 print_step 2 "Setting up Miniforge..."
 
-CONDA_SH=""
-for path in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/mambaforge"; do
-    if [ -f "$path/etc/profile.d/conda.sh" ]; then
-        CONDA_SH="$path/etc/profile.d/conda.sh"
+CONDA_DIR=""
+for path in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/mambaforge"; do
+    if [ -d "$path/bin" ]; then
+        CONDA_DIR="$path"
         break
     fi
 done
 
-if [ -n "$CONDA_SH" ]; then
-    print_skip "Conda already installed at: $CONDA_SH"
+if [ -n "$CONDA_DIR" ]; then
+    print_skip "Found conda at: $CONDA_DIR"
 else
-    echo ""
-    echo "    Downloading Miniforge (this may take a few minutes)..."
-    echo ""
+    echo "    Downloading Miniforge..."
 
     ARCH=$(uname -m)
-    FORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-${ARCH}.sh"
+    wget -q --show-progress \
+        "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-${ARCH}.sh" \
+        -O /tmp/miniforge.sh
+    bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
+    rm /tmp/miniforge.sh
 
-    wget -q --show-progress "$FORGE_URL" -O /tmp/miniforge_installer.sh
-    bash /tmp/miniforge_installer.sh -b -p "$HOME/miniforge3"
-    rm /tmp/miniforge_installer.sh
-
-    CONDA_SH="$HOME/miniforge3/etc/profile.d/conda.sh"
+    CONDA_DIR="$HOME/miniforge3"
     print_success "Miniforge installed."
 fi
 
-# Activate conda for this script only
-source "$CONDA_SH"
-print_success "Conda ready."
+CONDA="$CONDA_DIR/bin/conda"
+PIP="$CONDA_DIR/envs/$ENV_NAME/bin/pip"
+PYTHON="$CONDA_DIR/envs/$ENV_NAME/bin/python"
 
 
 # ----------------------------------------------------------
-#  Step 3: Conda Environment (Python 3.9)
+#  Step 3: Python Environment
 # ----------------------------------------------------------
-print_step 3 "Creating the $ENV_NAME environment..."
+print_step 3 "Creating $ENV_NAME environment..."
 
-# Remove existing environment if present
-if conda env list | grep -q "$ENV_NAME"; then
-    echo "    Removing existing environment..."
-    conda env remove -n "$ENV_NAME" -y
+# Remove if exists
+if [ -d "$CONDA_DIR/envs/$ENV_NAME" ]; then
+    echo "    Removing old environment..."
+    "$CONDA" env remove -n "$ENV_NAME" -y 2>/dev/null || rm -rf "$CONDA_DIR/envs/$ENV_NAME"
 fi
 
-echo ""
-echo "    Creating Python 3.9 environment and installing packages..."
-echo "    (this may take several minutes)"
-echo ""
+echo "    Creating Python 3.9 environment..."
+"$CONDA" create -n "$ENV_NAME" python=3.9 -y -q
 
-conda create -n "$ENV_NAME" python=3.9 -y
-conda run -n "$ENV_NAME" pip install -r "$SCRIPT_DIR/requirements.txt"
-print_success "Conda environment created."
+echo "    Installing packages..."
+"$PIP" install --quiet -r "$SCRIPT_DIR/requirements.txt"
+
+print_success "Environment ready."
 
 
 # ----------------------------------------------------------
@@ -125,24 +123,22 @@ print_success "Conda environment created."
 # ----------------------------------------------------------
 print_step 4 "Configuring Last.fm..."
 
-CURRENT_USERNAME=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['lastfm']['username'])" 2>/dev/null || echo "")
+CURRENT_USERNAME=$("$PYTHON" -c "import json; print(json.load(open('$CONFIG_FILE'))['lastfm']['username'])" 2>/dev/null || echo "")
 
 if [ -n "$CURRENT_USERNAME" ]; then
     echo ""
     echo "    Last.fm is already configured for user: $CURRENT_USERNAME"
-    echo ""
-    read -p "    Do you want to reconfigure? (y/N): " RECONFIG
+    read -p "    Reconfigure? (y/N): " RECONFIG
     if [[ ! "$RECONFIG" =~ ^[Yy]$ ]]; then
-        print_skip "Keeping existing Last.fm configuration."
+        print_skip "Keeping existing config."
         SKIP_LASTFM=true
     fi
 fi
 
 if [ "$SKIP_LASTFM" != "true" ]; then
     echo ""
-    echo "    You'll need a Last.fm account and API key."
-    echo "    Get your API key here: https://www.last.fm/api/account/create"
-    echo "    (Leave blank to skip — you can configure later in config.json)"
+    echo "    Get your API key: https://www.last.fm/api/account/create"
+    echo "    (Leave blank to skip — edit config.json later)"
     echo ""
 
     read -p "    Last.fm Username: " LASTFM_USER
@@ -151,44 +147,36 @@ if [ "$SKIP_LASTFM" != "true" ]; then
     read -p "    API Key:          " LASTFM_KEY
     read -p "    API Secret:       " LASTFM_SECRET
 
-    if [ -z "$LASTFM_USER" ] || [ -z "$LASTFM_PASS" ] || [ -z "$LASTFM_KEY" ] || [ -z "$LASTFM_SECRET" ]; then
-        print_info "Some fields were left blank. You can fill them in later by editing config.json"
-    fi
-
-    python3 << PYEOF
+    "$PYTHON" << PYEOF
 import json
-
 with open("$CONFIG_FILE", "r") as f:
     config = json.load(f)
-
 config["lastfm"]["username"] = """$LASTFM_USER"""
 config["lastfm"]["password"] = """$LASTFM_PASS"""
 config["lastfm"]["api_key"] = """$LASTFM_KEY"""
 config["lastfm"]["api_secret"] = """$LASTFM_SECRET"""
-
 with open("$CONFIG_FILE", "w") as f:
     json.dump(config, f, indent=4)
     f.write("\n")
 PYEOF
 
-    print_success "Last.fm credentials saved to config.json"
+    print_success "Last.fm saved to config.json"
 fi
 
 
 # ----------------------------------------------------------
-#  Step 5: Audio Device Setup (ALSA config)
+#  Step 5: ALSA Audio Config
 # ----------------------------------------------------------
 print_step 5 "Configuring audio input..."
 
-# Auto-detect USB mic card number
 USB_CARD=$(arecord -l 2>/dev/null | grep -i "usb\|mic" | head -1 | grep -oP 'card \K[0-9]+')
 
 if [ -z "$USB_CARD" ]; then
     echo ""
-    echo "    Available audio devices:"
-    arecord -l 2>/dev/null | sed 's/^/    /'
+    echo "    Audio devices:"
+    arecord -l 2>/dev/null | sed 's/^/    /' || echo "    (none found)"
     echo ""
-    read -p "    Enter your microphone's card number: " USB_CARD
+    read -p "    Enter your mic's card number: " USB_CARD
 fi
 
 if [ -n "$USB_CARD" ]; then
@@ -208,30 +196,27 @@ pcm.shared_mic {
     }
 }
 ASOUNDEOF
-    print_success "ALSA configured — USB mic (card $USB_CARD) with shared access"
+    print_success "ALSA configured (USB mic card $USB_CARD, shared access)"
 else
-    print_info "No USB mic detected. You can configure later by editing ~/.asoundrc"
+    print_info "No mic detected. Edit ~/.asoundrc later."
 fi
 
 
 # ----------------------------------------------------------
-#  Step 6: Auto-Start Setup
+#  Step 6: Auto-Start
 # ----------------------------------------------------------
 print_step 6 "Auto-start configuration..."
 
-echo ""
-read -p "    Would you like ScrobbleDaddy to start automatically on boot? (Y/n): " AUTOSTART
+read -p "    Start ScrobbleDaddy on boot? (Y/n): " AUTOSTART
 AUTOSTART=${AUTOSTART:-Y}
 
 if [[ "$AUTOSTART" =~ ^[Yy]$ ]]; then
     bash "$SCRIPT_DIR/setup_autostart.sh"
 else
-    print_skip "Skipping auto-start. You can set it up later with: bash setup_autostart.sh"
+    print_skip "Skipping. Run setup_autostart.sh later."
 fi
 
 
-# =============================================================
-#  Done!
 # =============================================================
 echo ""
 echo -e "${GREEN}${BOLD}"
@@ -239,7 +224,7 @@ echo "  ╔═══════════════════════
 echo "  ║     🎉  Installation Complete!  🎉     ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo -e "${NC}"
-echo "  To start ScrobbleDaddy right now:"
+echo "  To start ScrobbleDaddy:"
 echo ""
 echo "      bash run.sh"
 echo ""
