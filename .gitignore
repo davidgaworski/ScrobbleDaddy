@@ -1,0 +1,12 @@
+# Temporary files from runtime
+image.jpg
+output.wav
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
