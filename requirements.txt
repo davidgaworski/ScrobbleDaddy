@@ -1,0 +1,9 @@
+# ScrobbleDaddy - Core Dependencies
+pygame
+numpy
+pyaudio
+shazamio
+requests
+sounddevice
+soundfile
+pylast

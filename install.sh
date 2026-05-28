@@ -116,10 +116,12 @@ if conda env list | grep -q "ScrobbleDaddyPy"; then
     print_info "To recreate it, run: conda env remove -n ScrobbleDaddyPy"
 else
     echo ""
-    echo "    Installing Python packages (this may take several minutes)..."
+    echo "    Creating Python environment and installing packages..."
+    echo "    (this may take several minutes)"
     echo ""
 
-    conda env create -f "$SCRIPT_DIR/ScrobbleDaddyPy.yaml"
+    conda create -n ScrobbleDaddyPy python=3.11 -y
+    conda run -n ScrobbleDaddyPy pip install -r "$SCRIPT_DIR/requirements.txt"
     print_success "Conda environment created."
 fi
 
