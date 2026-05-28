@@ -101,8 +101,11 @@ for _i in range(NUM_BARS):
 
 p = pyaudio.PyAudio()
 
-# Open the audio stream for input
-stream = p.open(format=pyaudio.paInt16, channels=1,rate=config['audio']['sample_rate'], input=True, frames_per_buffer=config['audio']['chunk_size'])
+# Open the audio stream for input (use configured device)
+device_index = config['audio'].get('device_index', None)
+stream = p.open(format=pyaudio.paInt16, channels=1, rate=config['audio']['sample_rate'],
+                input=True, frames_per_buffer=config['audio']['chunk_size'],
+                input_device_index=device_index)
 
 # Set environment variable for ALSA
 os.environ['PA_ALSA_PLUGHW'] = '1'
@@ -135,12 +138,15 @@ def record_audio():
     global isRecording
     samplerate = 44100  # Hertz
     filename = 'output.wav'
+    device_index = config['audio'].get('device_index', None)
 
     isRecording = True
+    print(f"Recording {config['audio']['record_seconds']}s from device {device_index}...")
     mydata = sd.rec(int(samplerate * config['audio']['record_seconds']), samplerate=44100,
-                    channels=1, blocking=True)
+                    channels=1, blocking=True, device=device_index)
 
     sf.write(filename, mydata, samplerate)
+    print(f"Recording saved to {filename}")
 
     isRecording = False
     return filename
