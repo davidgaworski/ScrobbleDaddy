@@ -189,34 +189,15 @@ isRecording = False
 
 def record_audio():
     global isRecording
-    if stream is None:
-        print("No audio stream available for recording")
-        return None
-
+    samplerate = 44100
     filename = 'output.wav'
-    samplerate = config['audio']['sample_rate']
-    chunk = config['audio']['chunk_size']
-    record_seconds = config['audio']['record_seconds']
 
     isRecording = True
     try:
-        print(f"Recording {record_seconds}s...")
-        frames = []
-        num_chunks = int(samplerate / chunk * record_seconds)
-
-        for _ in range(num_chunks):
-            data = stream.read(chunk, exception_on_overflow=False)
-            frames.append(data)
-
-        # Write WAV file
-        import wave
-        wf = wave.open(filename, 'wb')
-        wf.setnchannels(1)
-        wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
-        wf.setframerate(samplerate)
-        wf.writeframes(b''.join(frames))
-        wf.close()
-
+        print(f"Recording {config['audio']['record_seconds']}s...")
+        mydata = sd.rec(int(samplerate * config['audio']['record_seconds']),
+                        samplerate=samplerate, channels=1, blocking=True)
+        sf.write(filename, mydata, samplerate)
         print(f"Recording saved to {filename}")
         isRecording = False
         return filename
@@ -329,8 +310,8 @@ def start_recognition_thread():
 
 # Function to get frequency bands from audio data
 def get_frequency_bands():
-    if stream is None:
-        return np.zeros(NUM_BARS)
+    if stream is None or isRecording:
+        return np.zeros(NUM_BARS) if prev_bands is None else prev_bands
 
     try:
         data = np.frombuffer(stream.read(config['audio']['chunk_size'], exception_on_overflow=False), dtype=np.int16)
