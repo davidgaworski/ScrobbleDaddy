@@ -28,19 +28,25 @@ pygame.init()
 
 running = True
 
-# Define screen dimensions
-WIDTH = config['gui']['screen_width']
-HEIGHT = config['gui']['screen_height']
+# Set up the display — fullscreen on Linux (Pi), windowed on Mac
+import platform
+if platform.system() == 'Linux':
+    display_info = pygame.display.Info()
+    WIDTH = display_info.current_w
+    HEIGHT = display_info.current_h
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+else:
+    WIDTH = config['gui']['screen_width']
+    HEIGHT = config['gui']['screen_height']
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("ScrobbleDaddy")
+
 NUM_BARS = 32
 
 last_track_title = ""
 last_artist_name = ""
 last_track_play_count = 0
 last_cover_art_url = ""
-
-# Set up the display
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("ScrobbleDaddy")
 
 # Color palette (matching ScrobbleDaddy branding)
 BG_COLOR = (12, 12, 20)
@@ -562,6 +568,11 @@ def startApp():
         draw_equalizer(bands, bar_surface)
         screen.blit(bar_surface, (LEFT_PANEL_W, 0))
 
+        # Reflection (flip + fade)
+        reflection = pygame.transform.flip(bar_surface, False, True)
+        reflection.set_alpha(50)
+        screen.blit(reflection, (LEFT_PANEL_W, HEIGHT // 2))
+
         # --- Spinning Vinyl Record (rotate every 3rd frame) ---
         vinyl_angle = (vinyl_angle + VINYL_SPEED) % 360
         vinyl_frame_counter += 1
@@ -573,7 +584,7 @@ def startApp():
             cached_rotated_vinyl = pygame.transform.rotate(cached_vinyl, vinyl_angle)
 
         rot_rect = cached_rotated_vinyl.get_rect(
-            center=(WIDTH - VINYL_SIZE // 2 - 20, HEIGHT - VINYL_SIZE // 2 - 15))
+            center=(LEFT_PANEL_W // 2, HEIGHT - VINYL_SIZE // 2 - 10))
         screen.blit(cached_rotated_vinyl, rot_rect)
 
         # --- Flip ---
