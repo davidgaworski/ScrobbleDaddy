@@ -310,8 +310,8 @@ def start_recognition_thread():
 
 # Function to get frequency bands from audio data
 def get_frequency_bands():
-    if stream is None or isRecording:
-        return np.zeros(NUM_BARS) if prev_bands is None else prev_bands
+    if stream is None:
+        return np.zeros(NUM_BARS)
 
     try:
         data = np.frombuffer(stream.read(config['audio']['chunk_size'], exception_on_overflow=False), dtype=np.int16)
