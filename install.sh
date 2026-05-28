@@ -13,7 +13,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.json"
-VENV_DIR="$SCRIPT_DIR/venv"
+ENV_NAME="ScrobbleDaddyPy"
 
 # ----------------------------------------------------------
 #  Colors for pretty output
@@ -31,7 +31,7 @@ print_skip()    { echo -e "    ${YELLOW}⏭️   $1${NC}"; }
 print_error()   { echo -e "    ${RED}❌  $1${NC}"; }
 print_info()    { echo -e "    ${YELLOW}ℹ️   $1${NC}"; }
 
-TOTAL_STEPS=5
+TOTAL_STEPS=6
 
 # =============================================================
 echo -e "${BOLD}"
@@ -51,51 +51,84 @@ print_step 1 "Installing system dependencies..."
 sudo apt update -y
 sudo apt install -y \
     git \
-    python3 \
-    python3-venv \
-    python3-pip \
-    python3-dev \
     portaudio19-dev \
     libsdl2-dev \
     libsdl2-mixer-dev \
     libsdl2-image-dev \
     libsdl2-ttf-dev \
     libsndfile1-dev \
-    ffmpeg
+    ffmpeg \
+    alsa-utils
 
 print_success "System dependencies installed."
 
 
 # ----------------------------------------------------------
-#  Step 2: Python Virtual Environment
+#  Step 2: Miniforge (conda for ARM)
 # ----------------------------------------------------------
-print_step 2 "Setting up Python environment..."
+print_step 2 "Setting up Miniforge..."
 
-# Remove existing venv if present
-if [ -d "$VENV_DIR" ]; then
+CONDA_SH=""
+for path in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/mambaforge"; do
+    if [ -f "$path/etc/profile.d/conda.sh" ]; then
+        CONDA_SH="$path/etc/profile.d/conda.sh"
+        break
+    fi
+done
+
+if [ -n "$CONDA_SH" ]; then
+    print_skip "Conda already installed at: $CONDA_SH"
+else
+    echo ""
+    echo "    Downloading Miniforge (this may take a few minutes)..."
+    echo ""
+
+    ARCH=$(uname -m)
+    FORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-${ARCH}.sh"
+
+    wget -q --show-progress "$FORGE_URL" -O /tmp/miniforge_installer.sh
+    bash /tmp/miniforge_installer.sh -b -p "$HOME/miniforge3"
+    rm /tmp/miniforge_installer.sh
+
+    CONDA_SH="$HOME/miniforge3/etc/profile.d/conda.sh"
+    print_success "Miniforge installed."
+fi
+
+# Activate conda
+source "$CONDA_SH"
+
+# Make conda available permanently
+"$(dirname "$(dirname "$CONDA_SH")")/bin/conda" init bash 2>/dev/null || true
+print_success "Conda added to your shell."
+
+
+# ----------------------------------------------------------
+#  Step 3: Conda Environment (Python 3.9)
+# ----------------------------------------------------------
+print_step 3 "Creating the $ENV_NAME environment..."
+
+# Remove existing environment if present
+if conda env list | grep -q "$ENV_NAME"; then
     echo "    Removing existing environment..."
-    rm -rf "$VENV_DIR"
+    conda env remove -n "$ENV_NAME" -y
 fi
 
 echo ""
-echo "    Creating virtual environment and installing packages..."
+echo "    Creating Python 3.9 environment and installing packages..."
 echo "    (this may take several minutes)"
 echo ""
 
-python3 -m venv "$VENV_DIR"
-"$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
-
-print_success "Python environment created at $VENV_DIR"
+conda create -n "$ENV_NAME" python=3.9 -y
+conda run -n "$ENV_NAME" pip install -r "$SCRIPT_DIR/requirements.txt"
+print_success "Conda environment created."
 
 
 # ----------------------------------------------------------
-#  Step 3: Last.fm Configuration
+#  Step 4: Last.fm Configuration
 # ----------------------------------------------------------
-print_step 3 "Configuring Last.fm..."
+print_step 4 "Configuring Last.fm..."
 
-# Check if credentials are already filled in
-CURRENT_USERNAME=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['lastfm']['username'])")
+CURRENT_USERNAME=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['lastfm']['username'])" 2>/dev/null || echo "")
 
 if [ -n "$CURRENT_USERNAME" ]; then
     echo ""
@@ -112,6 +145,7 @@ if [ "$SKIP_LASTFM" != "true" ]; then
     echo ""
     echo "    You'll need a Last.fm account and API key."
     echo "    Get your API key here: https://www.last.fm/api/account/create"
+    echo "    (Leave blank to skip — you can configure later in config.json)"
     echo ""
 
     read -p "    Last.fm Username: " LASTFM_USER
@@ -124,7 +158,6 @@ if [ "$SKIP_LASTFM" != "true" ]; then
         print_info "Some fields were left blank. You can fill them in later by editing config.json"
     fi
 
-    # Update config.json using Python (safe JSON handling)
     python3 << PYEOF
 import json
 
@@ -146,9 +179,9 @@ fi
 
 
 # ----------------------------------------------------------
-#  Step 4: Audio Device Setup (ALSA config)
+#  Step 5: Audio Device Setup (ALSA config)
 # ----------------------------------------------------------
-print_step 4 "Configuring audio input..."
+print_step 5 "Configuring audio input..."
 
 # Auto-detect USB mic card number
 USB_CARD=$(arecord -l 2>/dev/null | grep -i "usb\|mic" | head -1 | grep -oP 'card \K[0-9]+')
@@ -166,19 +199,28 @@ if [ -n "$USB_CARD" ]; then
 pcm.!default {
     type asym
     playback.pcm "plughw:0,0"
-    capture.pcm "plughw:${USB_CARD},0"
+    capture.pcm "plug:shared_mic"
+}
+
+pcm.shared_mic {
+    type dsnoop
+    ipc_key 816357
+    slave {
+        pcm "hw:${USB_CARD},0"
+        channels 1
+    }
 }
 ASOUNDEOF
-    print_success "ALSA configured — USB mic (card $USB_CARD) set as default input"
+    print_success "ALSA configured — USB mic (card $USB_CARD) with shared access"
 else
     print_info "No USB mic detected. You can configure later by editing ~/.asoundrc"
 fi
 
 
 # ----------------------------------------------------------
-#  Step 5: Auto-Start Setup
+#  Step 6: Auto-Start Setup
 # ----------------------------------------------------------
-print_step 5 "Auto-start configuration..."
+print_step 6 "Auto-start configuration..."
 
 echo ""
 read -p "    Would you like ScrobbleDaddy to start automatically on boot? (Y/n): " AUTOSTART
