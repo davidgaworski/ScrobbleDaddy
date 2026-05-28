@@ -66,7 +66,7 @@ cached_album_art_path = None
 cached_lastfm_img = None
 
 # Pre-allocate surfaces (reuse each frame instead of creating new ones)
-bar_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT))
+bar_surface = pygame.surface.Surface((WIDTH - LEFT_PANEL_W, HEIGHT // 2))
 
 # Equalizer smoothing state
 prev_bands = None
@@ -289,7 +289,7 @@ def get_frequency_bands():
 def draw_equalizer(bands, barSurface):
     global prev_bands
 
-    max_height = HEIGHT - 80
+    max_height = (HEIGHT // 2) - 40
     max_width = WIDTH - LEFT_PANEL_W - 20
     bar_width = max(2, (max_width / NUM_BARS) - BAR_GAP)
 
@@ -316,7 +316,7 @@ def draw_equalizer(bands, barSurface):
         b = min(255, int(bar_colors[i][2] * brightness))
 
         pygame.draw.rect(barSurface, (r, g, b),
-                         (bar_x, HEIGHT - bar_height, bar_width, bar_height))
+                         (bar_x, (HEIGHT // 2) - bar_height, bar_width, bar_height))
 
 def scrollArtist():
     global artist_start_index
