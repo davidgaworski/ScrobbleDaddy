@@ -7,4 +7,3 @@ requests
 sounddevice
 soundfile
 pylast
-audioop-lts
