@@ -146,48 +146,33 @@ fi
 
 
 # ----------------------------------------------------------
-#  Step 4: Audio Device Setup
+#  Step 4: Audio Device Setup (ALSA config)
 # ----------------------------------------------------------
-print_step 4 "Detecting audio devices..."
+print_step 4 "Configuring audio input..."
 
-echo ""
-"$VENV_DIR/bin/python" -c "
-import sounddevice as sd
-devices = sd.query_devices()
-print('    Available audio devices:')
-print('    ─────────────────────────────────────────')
-for i, d in enumerate(devices):
-    marker = '  '
-    if d['max_input_channels'] > 0:
-        marker = '🎤'
-    print(f'      {marker} [{i}] {d[\"name\"]} (inputs: {d[\"max_input_channels\"]})')
-print('    ─────────────────────────────────────────')
-print()
-print('    Look for your USB microphone in the list above.')
-print('    Devices marked with 🎤 can record audio.')
-" 2>/dev/null || echo "    (Could not list audio devices — make sure your mic is plugged in)"
+# Auto-detect USB mic card number
+USB_CARD=$(arecord -l 2>/dev/null | grep -i "usb\|mic" | head -1 | grep -oP 'card \K[0-9]+')
 
-echo ""
+if [ -z "$USB_CARD" ]; then
+    echo ""
+    echo "    Available audio devices:"
+    arecord -l 2>/dev/null | sed 's/^/    /'
+    echo ""
+    read -p "    Enter your microphone's card number: " USB_CARD
+fi
 
-CURRENT_DEVICE=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['audio']['device_index'])")
-
-read -p "    Enter your microphone's device number [$CURRENT_DEVICE]: " DEVICE_INDEX
-DEVICE_INDEX=${DEVICE_INDEX:-$CURRENT_DEVICE}
-
-python3 << PYEOF
-import json
-
-with open("$CONFIG_FILE", "r") as f:
-    config = json.load(f)
-
-config["audio"]["device_index"] = int($DEVICE_INDEX)
-
-with open("$CONFIG_FILE", "w") as f:
-    json.dump(config, f, indent=4)
-    f.write("\n")
-PYEOF
-
-print_success "Audio device set to index $DEVICE_INDEX"
+if [ -n "$USB_CARD" ]; then
+    cat > "$HOME/.asoundrc" << ASOUNDEOF
+pcm.!default {
+    type asym
+    playback.pcm "plughw:0,0"
+    capture.pcm "plughw:${USB_CARD},0"
+}
+ASOUNDEOF
+    print_success "ALSA configured — USB mic (card $USB_CARD) set as default input"
+else
+    print_info "No USB mic detected. You can configure later by editing ~/.asoundrc"
+fi
 
 
 # ----------------------------------------------------------
